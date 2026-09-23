@@ -1,0 +1,40 @@
+{
+  "document": {
+    "statement_start_date": "2025-06-01",
+    "statement_end_date": "2025-06-30"
+  },
+  "account": {
+    "account_holder": "John Smith",
+    "masked_account_number": "***1234"
+  },
+  "balances": {
+    "opening_balance": 1000.0,
+    "closing_balance": 3999.99
+  },
+  "transactions": [
+    {
+      "date": "2025-06-03",
+      "description": "WHOLE FOODS PURCHASE",
+      "amount": -84.31,
+      "balance_after_transaction": 915.69
+    },
+    {
+      "date": "2025-06-04",
+      "description": "PAYROLL DEPOSIT",
+      "amount": 2400.0,
+      "balance_after_transaction": 3315.69
+    },
+    {
+      "date": "2025-06-07",
+      "description": "ATM WITHDRAWAL",
+      "amount": -100.0,
+      "balance_after_transaction": 3215.69
+    },
+    {
+      "date": "2025-06-20",
+      "description": "INTEREST CREDIT",
+      "amount": 1.25,
+      "balance_after_transaction": 3216.94
+    }
+  ]
+}

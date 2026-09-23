@@ -1,0 +1,15 @@
+# Informational only. The production image uses /opt/pdfbank/venv + exact pip pins,
+# not Conda, to avoid a second package solver. This file supports compatible local dev.
+name: pdfbank-dev
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - poppler
+  - tesseract
+  - ghostscript
+  - qpdf
+  - mupdf
+  - pip:
+      - -r ../../sources/statement/requirements-test.txt

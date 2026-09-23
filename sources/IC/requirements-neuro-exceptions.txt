@@ -1,0 +1,10 @@
+# Neuro packages requiring separate treatment.
+
+# Current releases require Python >= 3.10; this is incompatible with the
+# Python 3.9 permanent neuro layer.
+bidsschematools
+
+# The PyPI source distribution did not contain the CMake source tree required
+# by the current build backend during the thread. Prefer a dedicated source
+# checkout with submodules or an OS package.
+python-gdcm

@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools==80.9.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdfbank"
+version = "0.1.0"
+description = "Offline, auditable bank-statement PDF extraction with provenance and reconciliation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [{name = "pdfbank project"}]
+dependencies = [
+  "PyMuPDF==1.28.2",
+  "pypdf==6.18.0",
+  "pdfplumber==0.11.10",
+  "camelot-py==2.0.0",
+  "opencv-python-headless==4.14.0.94",
+  "onnxruntime==1.23.2",
+  "pytesseract==0.3.13",
+  "ocrmypdf==17.11.0",
+  "Pillow==12.3.0",
+  "numpy==2.3.5",
+  "pandas==2.2.3",
+  "pydantic==2.13.4",
+  "typer==0.26.3",
+  "Jinja2==3.1.6",
+  "rapidfuzz==3.14.3",
+  "python-dateutil==2.9.0.post0",
+  "PyYAML==6.0.3",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==8.4.2",
+  "reportlab==4.4.9",
+]
+
+[project.scripts]
+pdfbank = "pdfbank.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pdfbank*"]
+
+[tool.pytest.ini_options]
+testpaths = ["../../tests/statement"]
+addopts = "-ra"

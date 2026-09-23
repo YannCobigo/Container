@@ -1,0 +1,79 @@
+Bootstrap: localimage
+From: /serv/Container/sandboxes/Rocky-8.10_20_dev.sandbox
+
+%labels
+    Author Yann Cobigo
+    Description Rocky 8.10 TeX Live 2026 layer for reports, articles and slides
+
+%post
+    set -euxo pipefail
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+
+    dnf -y install \
+        ca-certificates curl fontconfig make perl tar wget gzip bzip2 xz
+
+    mkdir -p /opt/ic/modulefiles/tex
+    mkdir -p /opt/ic/share/logs/tex
+    mkdir -p /opt/ic/texmf-home
+    mkdir -p /opt/ic/texmf-config
+    mkdir -p /opt/ic/texmf-var
+    mkdir -p /opt/ic/texmf-local
+
+    update-ca-trust force-enable
+    curl -vI https://mirror.ctan.org
+    #openssl s_client -connect https://mirror.ctan.org:443 -servername https://mirror.ctan.org < /dev/null
+
+    log_run() {
+        name="$1"
+        shift
+        "$@" 2>&1 | tee -a "/opt/ic/share/logs/tex/${name}.log"
+    }
+
+    cd /tmp
+    log_run texlive-download curl -fL \
+        https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz \
+        -o install-tl-unx.tar.gz
+
+    tar -xzf install-tl-unx.tar.gz
+    TexLive=`ls | grep install-tl | grep -v "gz"`
+    cd $TexLive
+
+    cat > texlive.profile <<'EOF2'
+selected_scheme scheme-full
+TEXDIR /usr/local/texlive/2026
+TEXMFCONFIG /opt/ic/texmf-config
+TEXMFVAR /opt/ic/texmf-var
+TEXMFHOME /opt/ic/texmf-home
+TEXMFLOCAL /opt/ic/texmf-local
+binary_x86_64-linux 1
+EOF2
+
+    log_run texlive-install ./install-tl -profile texlive.profile
+
+    cat >/opt/ic/modulefiles/tex/current <<'EOF2'
+#%Module1.0
+module-whatis "TeX Live 2026"
+set root /usr/local/texlive/2026
+prepend-path PATH $root/bin/x86_64-linux
+prepend-path MANPATH $root/texmf-dist/doc/man
+prepend-path INFOPATH $root/texmf-dist/doc/info
+setenv TEXDIR $root
+setenv TEXMFHOME /opt/ic/texmf-home
+setenv TEXMFCONFIG /opt/ic/texmf-config
+setenv TEXMFVAR /opt/ic/texmf-var
+setenv TEXMFLOCAL /opt/ic/texmf-local
+EOF2
+
+    dnf clean all
+    rm -rf /var/cache/dnf/*
+
+%environment
+    export MODULEPATH=/opt/ic/modulefiles
+    if [ -f /etc/profile.d/modules.sh ]; then
+        . /etc/profile.d/modules.sh
+    fi
+    module use /opt/ic/modulefiles
+
+%runscript
+    exec /bin/bash "$@"

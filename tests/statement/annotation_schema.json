@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pdfbank ground truth",
+  "type": "object",
+  "properties": {
+    "document": {"type": "object"},
+    "account": {"type": "object"},
+    "balances": {"type": "object"},
+    "transactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["date", "description", "amount"],
+        "properties": {
+          "date": {"type": ["string", "null"]},
+          "description": {"type": ["string", "null"]},
+          "amount": {"type": ["number", "null"]},
+          "balance_after_transaction": {"type": ["number", "null"]},
+          "page_number": {"type": ["integer", "null"]},
+          "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4}
+        }
+      }
+    }
+  },
+  "required": ["transactions"]
+}

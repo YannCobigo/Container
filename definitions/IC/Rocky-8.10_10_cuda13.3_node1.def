@@ -1,0 +1,150 @@
+Bootstrap: localimage
+From: /serv/Container/sandboxes/Rocky-8.10_00_base.sandbox
+
+%labels
+    Author Yann Cobigo
+    Description Rocky 8.10 CUDA 13.3 / CUTLASS 4.5.1 layer for node-1 RTX 3060
+
+%post
+    set -euxo pipefail
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+
+    : "${CUTLASS_REF:=v4.5.1}"
+    : "${CUDA_SAMPLES_REF:=v13.2update}"
+
+    cat >/etc/yum.repos.d/cuda-rhel8.repo <<'EOF2'
+[cuda-rhel8]
+name=CUDA RHEL8
+baseurl=https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/
+enabled=1
+gpgcheck=1
+gpgkey=https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/D42D0685.pub
+EOF2
+
+    dnf -y clean all
+    dnf -y makecache
+
+    BASE_TOOLS=(
+        ca-certificates curl git git-lfs jq less lsof make man-db p7zip patch
+        procps-ng rsync tar time tmux tree tzdata unzip util-linux which xz zip
+        findutils file hostname psmisc gawk sed grep bzip2 gzip nano nss-tools
+        strace ltrace iproute iputils
+    )
+
+    DEV_TOOLS=(
+        cuda-toolkit-13-3
+        cuda-command-line-tools-13-3
+        cuda-libraries-13-3
+        cuda-libraries-devel-13-3
+        libcudnn9
+        libcudnn9-devel
+    )
+
+    CUDA_SAMPLE_TOOLS=(
+        freeglut-devel
+        freeimage-devel
+        libX11-devel
+        libXi-devel
+        libXmu-devel
+        make
+        mesa-libGLU-devel
+    )
+
+    install_group() {
+        dnf -y install "$@"
+    }
+
+    install_group "${BASE_TOOLS[@]}"
+    install_group "${DEV_TOOLS[@]}"
+    install_group "${CUDA_SAMPLE_TOOLS[@]}"
+
+    mkdir -p /opt/ic/softwares /opt/ic/modulefiles /opt/ic/bin
+    mkdir -p /opt/ic/share /opt/ic/src /opt/ic/tmp
+    mkdir -p /opt/ic/modulefiles/CUDA /opt/ic/modulefiles/CUTLASS /opt/ic/modulefiles/CUDA-SAMPLES
+    chmod 1777 /opt/ic/tmp
+
+    cd /opt/ic/softwares
+
+    if [ ! -d cutlass/.git ]; then
+        git clone --depth 1 --branch "${CUTLASS_REF}" https://github.com/NVIDIA/cutlass.git cutlass
+    fi
+    ln -sfn /opt/ic/softwares/cutlass /opt/ic/softwares/CUTLASS
+
+    if [ ! -d cuda-samples/.git ]; then
+        git clone --depth 1 --branch "${CUDA_SAMPLES_REF}" https://github.com/NVIDIA/cuda-samples.git cuda-samples
+    fi
+    ln -sfn /opt/ic/softwares/cuda-samples /opt/ic/softwares/CUDA-SAMPLES
+
+    export CUDA_HOME=/usr/local/cuda-13.3
+    export CUDA_PATH=/usr/local/cuda-13.3
+    export PATH=/usr/local/cuda-13.3/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/cuda-13.3/lib64:${LD_LIBRARY_PATH:-}
+    export CMAKE_PREFIX_PATH=/usr/local/cuda-13.3:${CMAKE_PREFIX_PATH:-}
+    export CUDAToolkit_ROOT=/usr/local/cuda-13.3
+
+    cd /opt/ic/softwares/cuda-samples
+    cmake -S . -B build -DCUDAToolkit_ROOT=/usr/local/cuda-13.3
+    cmake --build build -j"$(nproc)"
+
+    cat >/opt/ic/modulefiles/CUDA/current <<'EOF2'
+#%Module1.0
+module-whatis "CUDA 13.3"
+prepend-path PATH /usr/local/cuda-13.3/bin
+prepend-path LD_LIBRARY_PATH /usr/local/cuda-13.3/lib64
+prepend-path CMAKE_PREFIX_PATH /usr/local/cuda-13.3
+setenv CUDA_HOME /usr/local/cuda-13.3
+setenv CUDA_PATH /usr/local/cuda-13.3
+EOF2
+
+    cat >/opt/ic/modulefiles/CUTLASS/current <<'EOF2'
+#%Module1.0
+module-whatis "CUTLASS 4.5.1 / CuTe"
+set root /opt/ic/softwares/cutlass
+setenv CUTLASS_ROOT $root
+setenv CUTLASS_DIR $root
+prepend-path CMAKE_PREFIX_PATH $root
+prepend-path PATH $root/tools/util
+EOF2
+
+    cat >/opt/ic/modulefiles/CUDA-SAMPLES/current <<'EOF2'
+#%Module1.0
+module-whatis "CUDA Samples"
+set root /opt/ic/softwares/cuda-samples
+setenv CUDA_SAMPLES_ROOT $root
+setenv CUDA_SAMPLES_BUILD $root/build
+EOF2
+
+    cat >/opt/ic/bin/cuda-sanity <<'EOF2'
+#!/bin/sh
+set -eu
+root=/opt/ic/softwares/cuda-samples
+build_root=$root/build
+
+device_query="$(find "$build_root" -type f -name deviceQuery -perm -111 | head -n 1 || true)"
+bandwidth_test="$(find "$build_root" -type f -name bandwidthTest -perm -111 | head -n 1 || true)"
+
+[ -n "$device_query" ] || { echo "deviceQuery not found" >&2; exit 1; }
+[ -n "$bandwidth_test" ] || { echo "bandwidthTest not found" >&2; exit 1; }
+
+"$device_query"
+"$bandwidth_test"
+EOF2
+    chmod 0755 /opt/ic/bin/cuda-sanity
+
+    dnf clean all
+    rm -rf /var/cache/dnf/*
+
+%environment
+    export MODULEPATH=/opt/ic/modulefiles
+    export CUDA_HOME=/usr/local/cuda-13.3
+    export CUDA_PATH=/usr/local/cuda-13.3
+    export PATH=/opt/ic/bin:/usr/local/cuda-13.3/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/cuda-13.3/lib64:${LD_LIBRARY_PATH:-}
+    if [ -f /etc/profile.d/modules.sh ]; then
+        . /etc/profile.d/modules.sh
+    fi
+    module use /opt/ic/modulefiles
+
+%runscript
+    exec /bin/bash "$@"

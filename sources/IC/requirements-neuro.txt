@@ -1,0 +1,40 @@
+# Python neuroimaging / MRI / BIDS / DICOM / tractography stack.
+# Version pins from the original environment are not copied here; they were
+# approximately two years old and the thread moved toward refreshing them.
+
+bctpy
+bfieldtools
+bids-validator
+brainspace
+CCColUtils
+dcm2bids
+dcm2niix
+dipy
+duecredit
+fury
+gdcm
+indexed-gzip
+mapca
+miutil
+neurdflib
+nibabel
+niflow-nipype1-workflows
+nilearn
+nipype
+nitime
+nitransforms
+niworkflows
+nolds
+nptyping
+pynrrd
+pybids
+pydeface
+pydicom
+pyhrv
+python-fedora
+sdcflows
+tedana
+templated-dictionary
+templateflow
+TractSeg
+trx-python

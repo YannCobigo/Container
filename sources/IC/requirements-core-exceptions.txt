@@ -1,0 +1,11 @@
+# These were present in the original Python requirements but caused build/index
+# issues during the thread. They are intentionally isolated from the bulk install.
+# Do not delete: this file preserves the outstanding requirements.
+
+# Originally pinned as acres==0.1.0; pip resolution failed in the Rocky/Python
+# environment during the thread.
+acres
+
+# Originally pinned as gpg==1.10.0. We tried moving to gpg==2.0.0; SWIG/GPGME
+# preprocessing still failed on __WORDSIZE. Handle as a dedicated exception.
+gpg==2.0.0

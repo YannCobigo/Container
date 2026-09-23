@@ -1,0 +1,18 @@
+# Runtime lock. Exact pins intentionally favor a compatibility-tested OpenCV 4.x line.
+PyMuPDF==1.28.2
+pypdf==6.18.0
+pdfplumber==0.11.10
+camelot-py==2.0.0
+opencv-python-headless==4.14.0.94
+onnxruntime==1.23.2
+pytesseract==0.3.13
+ocrmypdf==17.11.0
+Pillow==12.3.0
+numpy==2.3.5
+pandas==2.2.3
+pydantic==2.13.4
+typer==0.26.3
+Jinja2==3.1.6
+rapidfuzz==3.14.3
+python-dateutil==2.9.0.post0
+PyYAML==6.0.3

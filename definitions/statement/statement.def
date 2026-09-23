@@ -1,0 +1,101 @@
+Bootstrap: docker
+From: debian@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+
+%labels
+    org.opencontainers.image.title pdfbank
+    org.opencontainers.image.version 0.1.0
+    org.opencontainers.image.description "Offline auditable bank-statement PDF extraction"
+    org.opencontainers.image.base.name "debian:13.6-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258"
+    pdfbank.apt.snapshot "20260901T000000Z"
+    pdfbank.network "core pipeline performs no network I/O"
+
+%files
+    /serv/Container/sources/statement /opt/pdfbank/src
+    /serv/Container/tests/statement /opt/pdfbank/tests
+    /serv/Container/models/statement /models/pdfbank
+
+%post
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+
+    # Freeze Debian package resolution to a dated snapshot. The base OCI tag should be
+    # mirrored or pinned by digest in high-assurance deployments (see README).
+    cat > /etc/apt/sources.list <<'APT'
+deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260901T000000Z trixie main
+deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20260901T000000Z trixie-security main
+APT
+    printf 'Acquire::Check-Valid-Until "false";\nAcquire::Retries "3";\n' > /etc/apt/apt.conf.d/99pdfbank-snapshot
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates locales tzdata \
+        python3 python3-venv python3-dev python3-pip build-essential pkg-config \
+        poppler-utils qpdf mupdf-tools ghostscript tesseract-ocr tesseract-ocr-eng tesseract-ocr-osd \
+        unpaper pngquant jbig2dec libimage-exiftool-perl \
+        libglib2.0-0t64 libgl1 libgomp1 libjpeg62-turbo libpng16-16t64 \
+        fonts-dejavu-core fonts-liberation \
+        curl wget rsync git jq file less nano vim-tiny emacs-nox \
+        libreoffice firefox-esr xauth \
+        procps
+
+    python3 -m venv /opt/pdfbank/venv
+    /opt/pdfbank/venv/bin/python -m pip install --disable-pip-version-check --no-cache-dir \
+        pip==25.2 setuptools==80.9.0 wheel==0.45.1
+    /opt/pdfbank/venv/bin/pip install --disable-pip-version-check --no-cache-dir \
+        -r /opt/pdfbank/src/requirements.txt
+    /opt/pdfbank/venv/bin/pip install --disable-pip-version-check --no-cache-dir \
+        --no-deps /opt/pdfbank/src
+
+    # Build-time audit artifacts. These are immutable inside the final SIF.
+    mkdir -p /opt/pdfbank/build-info /input /output /models/pdfbank
+    /opt/pdfbank/venv/bin/pdfbank versions --json > /opt/pdfbank/build-info/versions.json || true
+    dpkg-query -W -f='${binary:Package}\t${Version}\n' | sort > /opt/pdfbank/build-info/dpkg-versions.tsv
+    /opt/pdfbank/venv/bin/pip freeze --all | sort > /opt/pdfbank/build-info/pip-freeze.txt
+    sha256sum /opt/pdfbank/src/requirements.txt > /opt/pdfbank/build-info/requirements.sha256
+
+    # Avoid package caches / mutable indexes in the runtime image.
+    rm -rf /root/.cache/pip /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+%environment
+    export PATH=/opt/pdfbank/venv/bin:$PATH
+    export VIRTUAL_ENV=/opt/pdfbank/venv
+    export PYTHONUNBUFFERED=1
+    export PYTHONDONTWRITEBYTECODE=1
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
+    export PDFBANK_MODEL_DIR=/models/pdfbank
+    export PDFBANK_OFFLINE=1
+
+%runscript
+    exec /opt/pdfbank/venv/bin/pdfbank "$@"
+
+%test
+    set -eu
+    export PATH=/opt/pdfbank/venv/bin:$PATH
+    pdfbank versions --json >/tmp/pdfbank-versions.json
+    pdfbank inspect /opt/pdfbank/tests/fixtures/native_standard.pdf --json >/tmp/pdfbank-inspect.json
+    pdfbank extract /opt/pdfbank/tests/fixtures/native_standard.pdf --output /tmp/pdfbank-smoke --json
+    test -s /tmp/pdfbank-smoke/transactions.csv
+    test -s /tmp/pdfbank-smoke/statement.json
+    test -s /tmp/pdfbank-smoke/validation.json
+    test -s /tmp/pdfbank-smoke/extraction_report.html
+    python - <<'PY'
+import json
+p=json.load(open('/tmp/pdfbank-smoke/statement.json'))
+assert len(p['transactions']) == 4
+assert p['validation']['status'] == 'validated'
+assert p['provenance']
+PY
+
+%help
+    pdfbank - offline, auditable bank-statement extraction
+
+    Examples:
+      apptainer exec pdfbank.sif pdfbank inspect statement.pdf
+      apptainer exec pdfbank.sif pdfbank extract statement.pdf --output results/
+      apptainer exec --net --network none pdfbank.sif pdfbank batch /input --output /output
+
+    Use `pdfbank --help` and see /opt/pdfbank/src/README.md.

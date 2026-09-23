@@ -1,0 +1,12 @@
+# Container build/runtime artifacts
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Editor/OS artifacts
+*~
+.DS_Store

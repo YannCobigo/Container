@@ -1,0 +1,10 @@
+{
+  "layout_backend": "heuristic",
+  "models": [],
+  "optional_layout": {
+    "runtime": "onnxruntime==1.23.2",
+    "adapter_example": "layout_model.example.json",
+    "supported_output_formats": ["xyxy_score_class", "yolo_v8"]
+  },
+  "note": "No learned model is required by the core pipeline. Optional local ONNX weights may be preinstalled at build time or mounted read-only at runtime; no runtime download occurs."
+}

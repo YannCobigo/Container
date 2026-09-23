@@ -1,0 +1,244 @@
+Bootstrap: localimage
+From: /serv/Container/sandboxes/Rocky-8.10_10_cuda13.3_node1.sandbox
+
+%labels
+    Author Yann Cobigo
+    Description Rocky 8.10 development layer for ITK, CGAL, libigl and visualization
+
+%post
+    set -euxo pipefail
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+
+    if [ -f /opt/rh/gcc-toolset-12/enable ]; then
+        . /opt/rh/gcc-toolset-12/enable
+    fi
+
+    LOG_DIR=/opt/ic/share/logs/dev
+    mkdir -p "$LOG_DIR"
+
+    log_run() {
+        name="$1"
+        shift
+        "$@" 2>&1 | tee -a "$LOG_DIR/${name}.log"
+    }
+
+    BUILD_TOOLS=(
+        git cmake make gcc gcc-c++ gcc-gfortran
+        openmpi-devel dcmtk-devel yaml-cpp-devel opencv-devel
+        libxslt-devel doxygen doxygen-latex graphviz libarchive-devel
+        texinfo perl-CPAN
+    )
+
+    GEOM_TOOLS=(
+	boost-devel
+    	gmp-devel
+    	mpfr-devel
+    	eigen3-devel
+    	qt5-qtbase-devel
+    	qt5-qtx11extras-devel
+    	qt5-qttools-devel
+    	qt5-qtsvg
+    	qt5-qtsvg-devel
+    )
+
+    VISUAL_TOOLS=(
+        paraview
+        gimp
+    )
+
+    install_group() {
+        group_name="$1"
+        shift
+        log_run "dnf-${group_name}" dnf -y install "$@"
+    }
+
+    install_group build "${BUILD_TOOLS[@]}"
+    install_group geom "${GEOM_TOOLS[@]}"
+    install_group visual "${VISUAL_TOOLS[@]}"
+
+    mkdir -p /opt/ic/softwares/neuro/ITK
+    mkdir -p /opt/ic/softwares/geom/CGAL
+    mkdir -p /opt/ic/softwares/geom/libigl
+    mkdir -p /opt/ic/modulefiles/dev /opt/ic/modulefiles/ITK
+    mkdir -p /opt/ic/modulefiles/CGAL /opt/ic/modulefiles/libigl
+    mkdir -p /opt/ic/modulefiles/ParaView /opt/ic/modulefiles/Gimp
+    mkdir -p /opt/ic/share/doc/ITK/5.4.6
+
+    # ITK documentation
+    log_run itk-book1 curl -fL \
+        -o /opt/ic/share/doc/ITK/5.4.6/InsightSoftwareGuide-Book1-5.4.6.pdf \
+        https://github.com/InsightSoftwareConsortium/ITK/releases/download/v5.4.6/InsightSoftwareGuide-Book1-5.4.6.pdf
+    log_run itk-book2 curl -fL \
+        -o /opt/ic/share/doc/ITK/5.4.6/InsightSoftwareGuide-Book2-5.4.6.pdf \
+        https://github.com/InsightSoftwareConsortium/ITK/releases/download/v5.4.6/InsightSoftwareGuide-Book2-5.4.6.pdf
+
+    build_itk() {
+        ver="$1"
+        src="/opt/ic/softwares/neuro/ITK/itk-${ver}-src"
+        bld="/opt/ic/softwares/neuro/ITK/itk-${ver}-build"
+        inst="/opt/ic/softwares/neuro/ITK/${ver}"
+
+        if [ ! -d "$inst" ]; then
+            log_run "itk-${ver}-clone" git clone --depth 1 --branch "v${ver}" \
+                https://github.com/InsightSoftwareConsortium/ITK.git "$src"
+            log_run "itk-${ver}-configure" cmake -S "$src" -B "$bld" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$inst" \
+                -DBUILD_TESTING=OFF \
+                -DBUILD_SHARED_LIBS=ON \
+                -DITK_USE_SYSTEM_EIGEN:BOOL=TRUE \
+                -DITK_LEGACY_REMOVE=ON \
+                -DModule_ITKVtkGlue:BOOL=OFF
+            log_run "itk-${ver}-build" cmake --build "$bld" -j"$(nproc)"
+            log_run "itk-${ver}-install" cmake --install "$bld"
+        fi
+    }
+
+    build_cgal() {
+        ver="$1"
+        src="/opt/ic/softwares/geom/CGAL/cgal-${ver}-src"
+        bld="/opt/ic/softwares/geom/CGAL/cgal-${ver}-build"
+        inst="/opt/ic/softwares/geom/CGAL/${ver}"
+
+        if [ ! -d "$inst" ]; then
+            log_run "cgal-${ver}-clone" git clone --depth 1 --branch "v${ver}" \
+                https://github.com/CGAL/cgal.git "$src"
+            log_run "cgal-${ver}-configure" cmake -S "$src" -B "$bld" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$inst" \
+                -DWITH_CGAL_Qt5=ON \
+                -DBUILD_TESTING=OFF
+            log_run "cgal-${ver}-build" cmake --build "$bld" -j"$(nproc)"
+            log_run "cgal-${ver}-install" cmake --install "$bld"
+        fi
+    }
+
+    build_libigl() {
+        ver="$1"
+        src="/opt/ic/softwares/geom/libigl/${ver}-src"
+        bld="/opt/ic/softwares/geom/libigl/${ver}-build"
+        inst="/opt/ic/softwares/geom/libigl/${ver}"
+
+        if [ ! -d "$inst" ]; then
+            log_run "libigl-${ver}-clone" git clone --depth 1 --branch "v${ver}" \
+                https://github.com/libigl/libigl.git "$src"
+            log_run "libigl-${ver}-configure" cmake -S "$src" -B "$bld" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$inst" \
+                -DLIBIGL_BUILD_TESTS=OFF \
+                -DLIBIGL_WITH_CGAL=ON
+            log_run "libigl-${ver}-build" cmake --build "$bld" -j"$(nproc)"
+            log_run "libigl-${ver}-install" cmake --install "$bld"
+        fi
+    }
+
+    build_itk 5.3.0
+    build_itk 5.4.6
+
+    build_cgal 5.5.4
+    build_cgal 5.6.3
+    build_cgal 6.1.2
+
+    build_libigl 2.6.0
+
+    cat >/opt/ic/modulefiles/dev/current <<'EOF2'
+#%Module1.0
+module-whatis "Development layer"
+prepend-path PATH /opt/ic/bin
+prepend-path PATH /usr/local/bin
+prepend-path PATH /usr/bin
+prepend-path CMAKE_PREFIX_PATH /opt/ic/softwares/neuro/ITK/5.4.6
+prepend-path CMAKE_PREFIX_PATH /opt/ic/softwares/geom/CGAL/6.1.2
+prepend-path CMAKE_PREFIX_PATH /opt/ic/softwares/geom/libigl/2.6.0
+EOF2
+
+    cat >/opt/ic/modulefiles/ITK/current <<'EOF2'
+#%Module1.0
+module-whatis "ITK 5.4.6"
+set root /opt/ic/softwares/neuro/ITK/5.4.6
+prepend-path CMAKE_PREFIX_PATH $root
+prepend-path LD_LIBRARY_PATH $root/lib64
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+    cat >/opt/ic/modulefiles/ITK/5.3.0 <<'EOF2'
+#%Module1.0
+module-whatis "ITK 5.3.0"
+set root /opt/ic/softwares/neuro/ITK/5.3.0
+prepend-path CMAKE_PREFIX_PATH $root
+prepend-path LD_LIBRARY_PATH $root/lib64
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+    cat >/opt/ic/modulefiles/ITK/5.4.6 <<'EOF2'
+#%Module1.0
+module-whatis "ITK 5.4.6"
+set root /opt/ic/softwares/neuro/ITK/5.4.6
+prepend-path CMAKE_PREFIX_PATH $root
+prepend-path LD_LIBRARY_PATH $root/lib64
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/CGAL/current <<'EOF2'
+#%Module1.0
+module-whatis "CGAL 6.1.2"
+set root /opt/ic/softwares/geom/CGAL/6.1.2
+prepend-path CMAKE_PREFIX_PATH $root
+prepend-path LD_LIBRARY_PATH $root/lib64
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+    cat >/opt/ic/modulefiles/CGAL/5.5.4 <<'EOF2'
+#%Module1.0
+module-whatis "CGAL 5.5.4"
+set root /opt/ic/softwares/geom/CGAL/5.5.4
+prepend-path CMAKE_PREFIX_PATH $root
+prepend-path LD_LIBRARY_PATH $root/lib64
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+    cat >/opt/ic/modulefiles/CGAL/5.6.3 <<'EOF2'
+#%Module1.0
+module-whatis "CGAL 5.6.3"
+set root /opt/ic/softwares/geom/CGAL/5.6.3
+prepend-path CMAKE_PREFIX_PATH $root
+prepend-path LD_LIBRARY_PATH $root/lib64
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+    cat >/opt/ic/modulefiles/CGAL/6.1.2 <<'EOF2'
+#%Module1.0
+module-whatis "CGAL 6.1.2"
+set root /opt/ic/softwares/geom/CGAL/6.1.2
+prepend-path CMAKE_PREFIX_PATH $root
+prepend-path LD_LIBRARY_PATH $root/lib64
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/libigl/current <<'EOF2'
+#%Module1.0
+module-whatis "libigl 2.6.0"
+set root /opt/ic/softwares/geom/libigl/2.6.0
+prepend-path CMAKE_PREFIX_PATH $root
+EOF2
+
+    cat >/opt/ic/modulefiles/ParaView/current <<'EOF2'
+#%Module1.0
+module-whatis "ParaView"
+prepend-path PATH /usr/bin
+EOF2
+
+    cat >/opt/ic/modulefiles/Gimp/current <<'EOF2'
+#%Module1.0
+module-whatis "GIMP"
+prepend-path PATH /usr/bin
+EOF2
+
+    dnf clean all
+    rm -rf /var/cache/dnf/*
+
+%environment
+    export MODULEPATH=/opt/ic/modulefiles
+    if [ -f /etc/profile.d/modules.sh ]; then
+        . /etc/profile.d/modules.sh
+    fi
+    module use /opt/ic/modulefiles
+
+%runscript
+    exec /bin/bash "$@"

@@ -1,0 +1,110 @@
+Bootstrap: docker
+From: rockylinux/rockylinux:8.10
+
+%labels
+    Author Yann Cobigo
+    Description Rocky 8.10 base layer for the imaging stack
+
+%post
+    set -euxo pipefail
+
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+    export TZ=UTC
+
+    dnf -y update
+    dnf -y install epel-release dnf-plugins-core
+    dnf config-manager --set-enabled powertools || true
+    dnf config-manager --set-enabled crb || true
+
+    # Optional newer compiler toolchain used by later layers.
+    dnf -y install gcc-toolset-12 || true
+
+    BASE_TOOLS=(
+        bash bash-completion bzip2 ca-certificates curl diffutils dos2unix
+        file findutils gawk git git-lfs glibc-langpack-en grep gzip hostname
+        jq less lsof man-db man-pages nano ncdu nss-tools p7zip patch perl
+        procps-ng psmisc python3 python3-devel python3-pip python3-setuptools
+        python3-virtualenv python3-wheel rsync sed sudo tar tcsh time tmux tree
+        tzdata unzip util-linux vim-minimal which xz zip zlib zlib-devel
+        iproute iputils openssl openssl-devel strace ltrace htop
+    )
+
+    DEV_TOOLS=(
+        gcc gcc-c++ gcc-gfortran gdb gdb-headless cmake ninja-build swig.x86_64
+        openblas openblas-devel lapack-devel fftw-libs.x86_64 fftw-devel
+        hdf5-devel gsl-devel eigen3-devel boost-devel gmp-devel mpfr-devel
+        libmpc-devel tbb tbb-devel mpich-devel.x86_64 mpich-devel
+        libpng12.x86_64 libpng-devel libjpeg-turbo-devel libtiff-devel
+        curl-devel libcurl-devel sqlite-devel libicu-devel libyaml yaml-cpp
+        yaml-cpp-devel ncurses-devel libuuid libuuid-devel
+        pkgconf-pkg-config libffi-devel bzip2-devel xz-devel readline-devel
+        tk-devel libxml2-devel libxslt-devel freetype-devel
+    )
+
+    GUI_TOOLS=(
+        libX11-devel libXt-devel libXext-devel libXrender-devel libSM-devel
+        libICE-devel libXmu-devel libXcursor-devel libXrandr-devel libXi-devel
+        libXinerama-devel libXp libXp-devel libXpm libXpm-devel
+        mesa-dri-drivers mesa-libGL mesa-libGLU mesa-libOSMesa mesa-libGLw-devel
+        dbus-glib-devel gobject-introspection-devel pango-devel cairo-devel
+        motif motif-devel motif-static
+        xorg-x11-apps xorg-x11-drivers xorg-x11-fonts-misc
+        xorg-x11-server-devel xorg-x11-server-Xvfb xorg-x11-utils
+        xorg-x11-xauth xorg-x11-xinit-session
+    )
+
+    HPC_TOOLS=(
+        fuse fuse-devel fuse-libs fuse3-devel fuse-zip
+        gpgme-devel qgpgme-devel krb5-devel krb5-pkinit krb5-server
+        krb5-server-ldap krb5-workstation openssh openssh-clients openssh-server
+        net-tools systemd-devel
+    )
+
+    install_group() {
+        dnf -y install "$@"
+    }
+
+    install_group "${BASE_TOOLS[@]}"
+    install_group "${DEV_TOOLS[@]}"
+    install_group "${GUI_TOOLS[@]}"
+    install_group "${HPC_TOOLS[@]}"
+
+    mkdir -p /opt/ic/softwares /opt/ic/modulefiles /opt/ic/bin
+    mkdir -p /opt/ic/share /opt/ic/src /opt/ic/tmp
+    chmod 1777 /opt/ic/tmp
+
+    cat >/etc/profile.d/ic-modules.sh <<'EOF2'
+#!/bin/sh
+if [ -f /etc/profile.d/modules.sh ]; then
+    . /etc/profile.d/modules.sh
+fi
+module use /opt/ic/modulefiles
+EOF2
+    chmod 0644 /etc/profile.d/ic-modules.sh
+
+    mkdir -p /opt/ic/modulefiles/base
+    cat >/opt/ic/modulefiles/base/current <<'EOF2'
+#%Module1.0
+module-whatis "IC base layer"
+prepend-path PATH /opt/ic/bin
+EOF2
+
+    ln -snf /usr/share/zoneinfo/UTC /etc/localtime || true
+    printf '%s\n' UTC >/etc/timezone || true
+
+    dnf clean all
+    rm -rf /var/cache/dnf/*
+
+%environment
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+    export MODULEPATH=/opt/ic/modulefiles
+    export PATH=/opt/ic/bin:$PATH
+    if [ -f /etc/profile.d/modules.sh ]; then
+        . /etc/profile.d/modules.sh
+    fi
+    module use /opt/ic/modulefiles
+
+%runscript
+    exec /bin/bash "$@"

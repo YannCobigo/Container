@@ -1,0 +1,313 @@
+Bootstrap: localimage
+From: /serv/Container/sandboxes/Rocky-8.10_31_python-neuro.sandbox
+
+%labels
+    Author Yann Cobigo
+    Description Rocky 8.10 neuroimaging application layer
+
+%post
+    set -euxo pipefail
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+
+    if [ -f /opt/rh/gcc-toolset-12/enable ]; then
+        . /opt/rh/gcc-toolset-12/enable
+    fi
+
+    dnf -y install \
+        cpio tcsh wget perl which gzip bzip2 xz \
+        libuuid-devel libcurl-devel openssl-devel sqlite-devel \
+        libtiff-devel libpng-devel dcmtk-devel curl tar unzip git
+
+    mkdir -p /opt/ic/softwares/neuro/{FSL,FreeSurfer,MRtrix3,AFNI/bin,ANTs,KCL/{NREG,SREG}}
+    mkdir -p /opt/ic/modulefiles/{FSL,FreeSurfer,MRtrix3,AFNI,ANTs,KCL/{NREG,SREG}}
+    mkdir -p /opt/ic/modulefiles/neuro
+    mkdir -p /opt/ic/share/logs/neuro
+
+    log_run() {
+        name="$1"
+        shift
+        "$@" 2>&1 | tee -a "/opt/ic/share/logs/neuro/${name}.log"
+    }
+
+    ########
+    # FSL  #
+    ########
+    cd /opt/ic/softwares/neuro/FSL
+    if [ ! -d v6.0.7.22 ]; then
+        log_run fsl-download wget -q https://fsl.fmrib.ox.ac.uk/fsldownloads/fslinstaller.py -O fslinstaller.py
+        log_run fsl-install python3 fslinstaller.py -d /opt/ic/softwares/neuro/FSL/v6.0.7.22 -V 6.0.7.22
+    fi
+
+    ################
+    # FreeSurfer   #
+    ################
+    cd /opt/ic/softwares/neuro/FreeSurfer
+    if [ ! -d 5.3.0 ]; then
+        log_run fs530 wget -q https://surfer.nmr.mgh.harvard.edu/pub/dist/freesurfer/5.3.0/freesurfer-Linux-centos6_x86_64-stable-pub-v5.3.0.tar.gz -O fs530.tar.gz
+        tar -xzf fs530.tar.gz && mv freesurfer 5.3.0
+        rm -f fs530.tar.gz
+    fi
+    if [ ! -d 7.1.0 ]; then
+        log_run fs710 wget -q https://surfer.nmr.mgh.harvard.edu/pub/dist/freesurfer/7.1.0/freesurfer-linux-centos7_x86_64-7.1.0.tar.gz -O fs710.tar.gz
+        tar -xzf fs710.tar.gz && mv freesurfer 7.1.0
+        rm -f fs710.tar.gz
+    fi
+    if [ ! -d 7.3.2 ]; then
+        log_run fs732 wget -q https://surfer.nmr.mgh.harvard.edu/pub/dist/freesurfer/7.3.2/freesurfer-linux-centos7_x86_64-7.3.2.tar.gz -O fs732.tar.gz
+        tar -xzf fs732.tar.gz && mv freesurfer 7.3.2
+        rm -f fs732.tar.gz
+    fi
+    if [ ! -d 8.2.0-1 ]; then
+        log_run fs820 wget -q https://surfer.nmr.mgh.harvard.edu/pub/dist/freesurfer/8.2.0/freesurfer-Rocky8-8.2.0-1.x86_64.rpm -O fs820-1.rpm
+        rpm2cpio fs820-1.rpm | cpio -idmv
+        mv usr/local/freesurfer/8.2.0-1 .
+        rm -rf usr fs820-1.rpm
+    fi
+
+    #############
+    # MRtrix3   #
+    #############
+    build_mrtrix() {
+        ver="$1"
+        src="/opt/ic/softwares/neuro/MRtrix3/mrtrix-${ver}-src"
+        inst="/opt/ic/softwares/neuro/MRtrix3/${ver}"
+
+        if [ ! -d "$inst" ]; then
+            log_run "mrtrix-${ver}-clone" git clone --branch "${ver}" --depth 1 https://github.com/MRtrix3/mrtrix3.git "$src"
+            export EIGEN_CFLAGS="-isystem /usr/include/eigen3"
+            ln -sf /usr/bin/python3 /usr/local/bin/python || true
+
+	    #ln -sf /usr/bin/moc-qt5 /usr/local/bin/moc || true
+            #ln -sf /usr/bin/qmake-qt5 /usr/local/bin/qmake || true
+            #ln -sf /usr/bin/rcc-qt5 /usr/local/bin/rcc || true
+	    export QMAKE=/usr/bin/qmake-qt5
+	    export MOC=/usr/bin/moc-qt5
+	    export RCC=/usr/bin/rcc-qt5
+
+	    export EIGEN_CFLAGS="-isystem /usr/include/eigen3"
+
+	    ( cd "$src" && log_run "mrtrix-${ver}-configure" ./configure )
+            ( cd "$src" && log_run "mrtrix-${ver}-build" ./build )
+            mkdir -p "$inst"
+            cp -a "$src"/bin "$inst"/
+            [ ! -d "$src/lib" ] || cp -a "$src"/lib "$inst"/
+        fi
+    }
+
+    build_mrtrix 3.0.4
+    build_mrtrix 3.0.8
+
+    ########
+    # AFNI #
+    ########
+    cd /opt/ic/softwares/neuro/AFNI
+    log_run afni-notes curl -fLO https://raw.githubusercontent.com/afni/afni/master/src/other_builds/OS_notes.linux_fedora_b_user.tcsh
+    log_run afni-update curl -fLO https://afni.nimh.nih.gov/pub/dist/bin/misc/@update.afni.binaries
+    log_run afni-install tcsh @update.afni.binaries -package linux_openmp_64 -bindir /opt/ic/softwares/neuro/AFNI/bin -do_extras
+
+    ##########
+    # ANTs   #
+    ##########
+    build_ants() {
+        ver="$1"
+        cmver="$2"
+        src="/opt/ic/softwares/neuro/ANTs/ants-${ver}-src"
+        bld="/opt/ic/softwares/neuro/ANTs/ants-${ver}-build"
+        inst="/opt/ic/softwares/neuro/ANTs/${ver}"
+
+        if [ ! -d "$inst" ]; then
+            log_run "ants-${ver}-clone" git clone --branch "v${ver}" --depth 1 https://github.com/ANTsX/ANTs.git "$src"
+
+            # ANTs 2.6.x contains an old CMake minimum in CMake/CCache.cmake.
+            # Patch it so it can be configured with modern CMake.
+            if [ -f "$src/CMake/CCache.cmake" ]; then
+                sed -i -E '1,10 s/^cmake_minimum_required\(VERSION [^)]*\)$/cmake_minimum_required(VERSION 3.5)/' "$src/CMake/CCache.cmake"
+            fi
+
+            log_run "ants-${ver}-configure" cmake -S "$src" -B "$bld" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$inst" \
+                -DBUILD_SHARED_LIBS=ON \
+                -DCMAKE_POLICY_VERSION_MINIMUM="${cmver}"
+            log_run "ants-${ver}-build" cmake --build "$bld" -j"$(nproc)"
+            log_run "ants-${ver}-install" cmake --install "$bld"
+        fi
+    }
+
+    build_ants 2.6.0 3.16
+
+    ##########
+    # KCL    #
+    ##########
+    build_kcl_reg() {
+        ver="$1"
+        src="/opt/ic/softwares/neuro/KCL/kcl_nreg-${ver}-src"
+        bld="/opt/ic/softwares/neuro/KCL/kcl_nreg-${ver}-build"
+        inst="/opt/ic/softwares/neuro/KCL/NREG/${ver}"
+
+        if [ ! -d "$inst" ]; then
+            log_run "kcl-nreg-${ver}-clone" git clone --branch "v${ver}" --depth 1 https://github.com/KCL-BMEIS/niftyreg "$src"
+            log_run "kcl-nreg-${ver}-configure" cmake -S "$src" -B "$bld" \
+                -DCMAKE_BUILD_TYPE=RELEASE \
+                -DBUILD_SHARED_LIBS=ON \
+                -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+                -DCMAKE_INSTALL_PREFIX:PATH="$inst"
+            log_run "kcl-nreg-${ver}-build" cmake --build "$bld" -j"$(nproc)"
+            log_run "kcl-nreg-${ver}-install" cmake --install "$bld"
+        fi
+    }
+
+    build_kcl_seg() {
+        ver="$1"
+        src="/opt/ic/softwares/neuro/KCL/kcl_sreg-${ver}-src"
+        bld="/opt/ic/softwares/neuro/KCL/kcl_sreg-${ver}-build"
+        inst="/opt/ic/softwares/neuro/KCL/SREG/${ver}"
+
+        if [ ! -d "$inst" ]; then
+            log_run "kcl-sreg-${ver}-clone" git clone --branch "v${ver}" --depth 1 https://github.com/KCL-BMEIS/NiftySeg "$src"
+            log_run "kcl-sreg-${ver}-configure" cmake -S "$src" -B "$bld" \
+                -DCMAKE_BUILD_TYPE=RELEASE \
+                -DBUILD_SHARED_LIBS=ON \
+                -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+                -DEIGEN_INCLUDE_DIR:PATH=/usr/include/eigen3/ \
+                -DCMAKE_INSTALL_PREFIX:PATH="$inst"
+            log_run "kcl-sreg-${ver}-build" cmake --build "$bld" -j"$(nproc)"
+            log_run "kcl-sreg-${ver}-install" cmake --install "$bld"
+        fi
+    }
+
+    build_kcl_reg 1.3
+    build_kcl_seg 1.0
+
+    ###############
+    #   MODULES   #
+    ###############
+
+    cat >/opt/ic/modulefiles/FSL/current <<'EOF2'
+#%Module1.0
+module-whatis "FSL 6.0.7.22"
+set root /opt/ic/softwares/neuro/FSL/v6.0.7.22
+setenv FSLDIR $root
+prepend-path PATH $root/bin
+prepend-path PATH $root/share/fsl/bin
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/FreeSurfer/current <<'EOF2'
+#%Module1.0
+module-whatis "FreeSurfer 8.2.0-1"
+set root /opt/ic/softwares/neuro/FreeSurfer/8.2.0-1
+setenv FREESURFER_HOME $root
+prepend-path PATH $root/bin
+prepend-path PATH $root/mni/bin
+prepend-path PATH $root/tktools
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/FreeSurfer/7.3.2 <<'EOF2'
+#%Module1.0
+module-whatis "FreeSurfer 7.3.2"
+set root /opt/ic/softwares/neuro/FreeSurfer/7.3.2
+setenv FREESURFER_HOME $root
+prepend-path PATH $root/bin
+prepend-path PATH $root/mni/bin
+prepend-path PATH $root/tktools
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/FreeSurfer/7.1.0 <<'EOF2'
+#%Module1.0
+module-whatis "FreeSurfer 7.1.0"
+set root /opt/ic/softwares/neuro/FreeSurfer/7.1.0
+setenv FREESURFER_HOME $root
+prepend-path PATH $root/bin
+prepend-path PATH $root/mni/bin
+prepend-path PATH $root/tktools
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/FreeSurfer/5.3.0 <<'EOF2'
+#%Module1.0
+module-whatis "FreeSurfer 5.3.0"
+set root /opt/ic/softwares/neuro/FreeSurfer/5.3.0
+setenv FREESURFER_HOME $root
+prepend-path PATH $root/bin
+prepend-path PATH $root/mni/bin
+prepend-path PATH $root/tktools
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/MRtrix3/current <<'EOF2'
+#%Module1.0
+module-whatis "MRtrix3 3.0.8"
+set root /opt/ic/softwares/neuro/MRtrix3/3.0.8
+prepend-path PATH $root/bin
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/MRtrix3/3.0.4 <<'EOF2'
+#%Module1.0
+module-whatis "MRtrix3 3.0.4"
+set root /opt/ic/softwares/neuro/MRtrix3/3.0.4
+prepend-path PATH $root/bin
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/AFNI/current <<'EOF2'
+#%Module1.0
+module-whatis "AFNI"
+set root /opt/ic/softwares/neuro/AFNI
+prepend-path PATH $root/bin
+EOF2
+
+    cat >/opt/ic/modulefiles/ANTs/current <<'EOF2'
+#%Module1.0
+module-whatis "ANTs 2.6.0"
+set root /opt/ic/softwares/neuro/ANTs/2.6.0
+prepend-path PATH $root/bin
+prepend-path PATH $root/Scripts
+prepend-path LD_LIBRARY_PATH $root/lib
+prepend-path LD_LIBRARY_PATH $root/lib64
+EOF2
+
+    cat >/opt/ic/modulefiles/KCL/NREG/current <<'EOF2'
+#%Module1.0
+module-whatis "KCL NiftyReg 1.3"
+set root /opt/ic/softwares/neuro/KCL/NREG/1.3
+prepend-path PATH $root/bin
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/KCL/SREG/current <<'EOF2'
+#%Module1.0
+module-whatis "KCL NiftySeg 1.0"
+set root /opt/ic/softwares/neuro/KCL/SREG/1.0
+prepend-path PATH $root/bin
+prepend-path LD_LIBRARY_PATH $root/lib
+EOF2
+
+    cat >/opt/ic/modulefiles/neuro/current <<'EOF2'
+#%Module1.0
+module-whatis "Neuroimaging application stack"
+module load FSL/current
+module load FreeSurfer/current
+module load MRtrix3/current
+module load AFNI/current
+module load ANTs/current
+module load KCL/NREG/current
+module load KCL/SREG/current
+EOF2
+
+    dnf clean all
+    rm -rf /var/cache/dnf/*
+
+%environment
+    export MODULEPATH=/opt/ic/modulefiles
+    if [ -f /etc/profile.d/modules.sh ]; then
+        . /etc/profile.d/modules.sh
+    fi
+    module use /opt/ic/modulefiles
+
+%runscript
+    exec /bin/bash "$@"
