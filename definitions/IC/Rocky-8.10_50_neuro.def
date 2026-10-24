@@ -1,5 +1,5 @@
 Bootstrap: localimage
-From: /serv/Container/sandboxes/Rocky-8.10_31_python-neuro.sandbox
+From: /serv/Container/sandboxes/IC/Rocky-8.10_41_python-neuro.sandbox
 
 %labels
     Author Yann Cobigo

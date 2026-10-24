@@ -1,0 +1,87 @@
+Bootstrap: localimage
+From: /serv/Container/sandboxes/IC/Rocky-8.10_40_python-core.sandbox
+
+%labels
+    Author Yann Cobigo
+    Description Rocky 8.10 Python 3.9 neuroimaging layer
+
+%files
+    /serv/Container/sources/IC/requirements-neuro.txt /opt/ic/softwares/python/requirements-neuro.txt
+    /serv/Container/sources/IC/requirements-neuro-exceptions.txt /opt/ic/softwares/python/requirements-neuro-exceptions.txt
+
+%post
+    set -euxo pipefail
+
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+
+    #
+    # Standard IC directories
+    #
+    mkdir -p /opt/ic/softwares/python
+    mkdir -p /opt/ic/modulefiles/python-neuro
+    mkdir -p /opt/ic/share/logs/python-neuro
+
+    #
+    # Main neuroimaging Python stack
+    #
+    python3.9 -m pip install \
+        --no-cache-dir \
+        -r /opt/ic/softwares/python/requirements-neuro.txt \
+        2>&1 | tee /opt/ic/share/logs/python-neuro/install.log
+
+    #
+    # Neuro-specific exceptions
+    #
+    # These packages are intentionally not part of the bulk installation.
+    # Install them below using explicit procedures when required.
+    #
+    # python3.9 -m pip install \
+    #     --no-cache-dir \
+    #     -r /opt/ic/softwares/python/requirements-neuro-exceptions.txt \
+    #     2>&1 | tee /opt/ic/share/logs/python-neuro/exceptions.log
+
+    #
+    # Verify inherited Python environment
+    #
+    python3.9 --version \
+        2>&1 | tee -a /opt/ic/share/logs/python-neuro/install.log
+
+    python3.9 -m pip --version \
+        2>&1 | tee -a /opt/ic/share/logs/python-neuro/install.log
+
+    python3.9 -m pip check \
+        2>&1 | tee -a /opt/ic/share/logs/python-neuro/install.log
+
+    #
+    # Module
+    #
+    cat >/opt/ic/modulefiles/python-neuro/current <<'EOF'
+#%Module1.0
+module-whatis "Python 3.9 neuroimaging stack"
+
+setenv PYTHON_NEURO 1
+setenv PYTHON_NEURO_VERSION 3.9
+EOF
+
+    #
+    # Cleanup
+    #
+    dnf clean all
+    rm -rf /var/cache/dnf/*
+
+%environment
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+    export MODULEPATH=/opt/ic/modulefiles
+    export PATH=/opt/ic/bin:/usr/bin:$PATH
+
+    if [ -f /etc/profile.d/modules.sh ]; then
+        . /etc/profile.d/modules.sh
+    fi
+
+    module use /opt/ic/modulefiles
+
+%runscript
+    exec /bin/bash "$@"
+    

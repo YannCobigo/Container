@@ -1,5 +1,6 @@
 Bootstrap: localimage
-From: /serv/Container/sandboxes/Rocky-8.10_20_dev.sandbox
+From: /serv/Container/sandboxes/IC/Rocky-8.10_10_cuda13.3_node1.sandbox
+#Rocky-8.10_20_dev.sandbox
 
 %labels
     Author Yann Cobigo

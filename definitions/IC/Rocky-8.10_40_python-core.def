@@ -1,0 +1,120 @@
+Bootstrap: localimage
+From: /serv/Container/sandboxes/IC/Rocky-8.10_30_dev.sandbox
+
+%labels
+    Author Yann Cobigo
+    Description Rocky 8.10 Python 3.9 general scientific core layer
+
+%files
+	/serv/Container/sources/IC/requirements-core-exceptions.txt /opt/ic/softwares/python/requirements-core-exceptions.txt
+	/serv/Container/sources/IC/requirements-core.txt /opt/ic/softwares/python/requirements-core.txt
+
+%post
+    set -euxo pipefail
+
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+
+    #
+    # Python 3.9
+    #
+    dnf -y module enable python39
+    dnf -y install \
+        python39 \
+        python39-devel \
+        python39-pip \
+        python39-setuptools \
+        python39-wheel \
+        swig \
+        gpgme-devel
+
+    #
+    # Standard IC directories
+    #
+    mkdir -p /opt/ic/softwares/python
+    mkdir -p /opt/ic/modulefiles/python-core
+    mkdir -p /opt/ic/share/logs/python-core
+
+    #
+    # Python build/install tools
+    #
+    python3.9 -m pip install \
+        --upgrade \
+        pip \
+        setuptools \
+        wheel \
+        setuptools-scm
+
+    #
+    # Main Python core stack
+    #
+    python3.9 -m pip install \
+        --no-cache-dir \
+        -r /opt/ic/softwares/python/requirements-core.txt \
+        2>&1 | tee /opt/ic/share/logs/python-core/install.log
+
+    #
+    # Exceptions
+    #
+    # These packages require special handling and are therefore not
+    # installed automatically here.  Keep the file as documentation
+    # and a place for future explicit exception handling.
+    #
+    # python3.9 -m pip install \
+    #     --no-cache-dir \
+    #     -r /opt/ic/softwares/python/requirements-core-exceptions.txt \
+    #     2>&1 | tee /opt/ic/share/logs/python-core/exceptions.log
+
+    #
+    # Verify the complete environment
+    #
+    python3.9 --version \
+        2>&1 | tee -a /opt/ic/share/logs/python-core/install.log
+
+    python3.9 -m pip --version \
+        2>&1 | tee -a /opt/ic/share/logs/python-core/install.log
+
+    python3.9 -m pip check \
+        2>&1 | tee -a /opt/ic/share/logs/python-core/install.log
+
+    #
+    # Module
+    #
+    cat >/opt/ic/modulefiles/python-core/current <<'EOF'
+#%Module1.0
+module-whatis "Python 3.9 core scientific stack"
+
+set root /usr
+
+prepend-path PATH $root/bin
+prepend-path CMAKE_PREFIX_PATH /opt/ic/softwares/python
+
+setenv PYTHON_VERSION 3.9
+setenv PYTHON_ROOT $root
+
+set-alias python python3.9
+set-alias pip "python3.9 -m pip"
+EOF
+
+    #
+    # Cleanup
+    #
+    dnf clean all
+    rm -rf /var/cache/dnf/*
+
+%environment
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+    export MODULEPATH=/opt/ic/modulefiles
+    export PATH=/opt/ic/bin:/usr/bin:$PATH
+
+    if [ -f /etc/profile.d/modules.sh ]; then
+        . /etc/profile.d/modules.sh
+    fi
+
+    module use /opt/ic/modulefiles
+
+%runscript
+    exec /bin/bash "$@"
+    
+
