@@ -30,10 +30,10 @@ build_sif() {
 #build_sandbox Rocky-8.10_10_cuda13.3_node1 Rocky-8.10_10_cuda13.3_node1.def
 #build_sandbox Rocky-8.10_20_tex Rocky-8.10_20_tex.def
 #build_sandbox Rocky-8.10_30_dev Rocky-8.10_30_dev.def
-#build_sandbox Rocky-8.10_40_python-core Rocky-8.10_40_python-core.def
-#build_sandbox Rocky-8.10_41_python-neuro Rocky-8.10_41_python-neuro.def
-#$build_sandbox Rocky-8.10_50_neuro Rocky-8.10_50_neuro.def
+build_sandbox Rocky-8.10_40_python-core Rocky-8.10_40_python-core.def
+build_sandbox Rocky-8.10_41_python-neuro Rocky-8.10_41_python-neuro.def
+build_sandbox Rocky-8.10_50_neuro Rocky-8.10_50_neuro.def
 
 # Example final production artifacts:
-build_sif Rocky-8.10_IC Rocky-8.10_50_neuro
+#build_sif Rocky-8.10_IC Rocky-8.10_50_neuro
 #build_sif Rocky-8.10_50_tex Rocky-8.10_50_tex

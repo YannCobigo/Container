@@ -28,6 +28,7 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
         openmpi-devel dcmtk-devel yaml-cpp-devel opencv-devel
         libxslt-devel doxygen doxygen-latex graphviz libarchive-devel
         texinfo perl-CPAN
+        gtest-devel
     )
 
     GEOM_TOOLS=(
@@ -57,10 +58,17 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
     install_group geom "${GEOM_TOOLS[@]}"
     install_group visual "${VISUAL_TOOLS[@]}"
 
+    # System-provided Artemis development dependencies.
+    rpm -q eigen3-devel | tee -a "$LOG_DIR/dependencies.log"
+    rpm -q doxygen      | tee -a "$LOG_DIR/dependencies.log"
+    rpm -q gtest-devel  | tee -a "$LOG_DIR/dependencies.log"
+    test -f /usr/include/eigen3/Eigen/Core
+
     mkdir -p /opt/ic/softwares/neuro/ITK
     mkdir -p /opt/ic/softwares/geom/CGAL
     mkdir -p /opt/ic/softwares/geom/libigl
-    mkdir -p /opt/ic/modulefiles/dev /opt/ic/modulefiles/ITK
+    mkdir -p /opt/ic/modulefiles/dev /opt/ic/modulefiles/nlohmann_json
+    mkdir -p /opt/ic/modulefiles/ITK
     mkdir -p /opt/ic/modulefiles/CGAL /opt/ic/modulefiles/libigl
     mkdir -p /opt/ic/modulefiles/ParaView /opt/ic/modulefiles/Gimp
     mkdir -p /opt/ic/share/doc/ITK/5.4.6
@@ -72,6 +80,23 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
     log_run itk-book2 curl -fL \
         -o /opt/ic/share/doc/ITK/5.4.6/InsightSoftwareGuide-Book2-5.4.6.pdf \
         https://github.com/InsightSoftwareConsortium/ITK/releases/download/v5.4.6/InsightSoftwareGuide-Book2-5.4.6.pdf
+
+    build_nlohmann_json() {
+        ver="$1"
+        src="/opt/ic/softwares/dev/nlohmann_json/nlohmann_json-${ver}-src"
+        bld="/opt/ic/softwares/dev/nlohmann_json/nlohmann_json-${ver}-build"
+        inst="/opt/ic/softwares/dev/nlohmann_json/${ver}"
+
+        if [ ! -d "$inst" ]; then
+            log_run "nlohmann-json-${ver}-clone" git clone --depth 1 --branch "v${ver}" \
+                https://github.com/nlohmann/json.git "$src"
+            log_run "nlohmann-json-${ver}-configure" cmake -S "$src" -B "$bld" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$inst" \
+                -DJSON_BuildTests=OFF
+            log_run "nlohmann-json-${ver}-install" cmake --install "$bld"
+        fi
+    }
 
     build_itk() {
         ver="$1"
@@ -133,6 +158,8 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
         fi
     }
 
+    build_nlohmann_json 3.11.3
+
     build_itk 5.3.0
     build_itk 5.4.6
 
@@ -141,6 +168,9 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
     build_cgal 6.1.2
 
     build_libigl 2.6.0
+
+    test -f /opt/ic/softwares/dev/nlohmann_json/3.11.3/include/nlohmann/json.hpp
+    test -f /opt/ic/softwares/dev/nlohmann_json/3.11.3/share/cmake/nlohmann_json/nlohmann_jsonConfig.cmake
 
     cat >/opt/ic/modulefiles/dev/current <<'EOF2'
 #%Module1.0
@@ -151,6 +181,14 @@ prepend-path PATH /usr/bin
 prepend-path CMAKE_PREFIX_PATH /opt/ic/softwares/neuro/ITK/5.4.6
 prepend-path CMAKE_PREFIX_PATH /opt/ic/softwares/geom/CGAL/6.1.2
 prepend-path CMAKE_PREFIX_PATH /opt/ic/softwares/geom/libigl/2.6.0
+EOF2
+
+    cat >/opt/ic/modulefiles/nlohmann_json/current <<'EOF2'
+#%Module1.0
+module-whatis "nlohmann/json 3.11.3"
+set root /opt/ic/softwares/dev/nlohmann_json/3.11.3
+prepend-path CMAKE_PREFIX_PATH $root
+setenv nlohmann_json_ROOT $root
 EOF2
 
     cat >/opt/ic/modulefiles/ITK/current <<'EOF2'

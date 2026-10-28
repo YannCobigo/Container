@@ -29,7 +29,7 @@ EOF2
         ca-certificates curl git git-lfs jq less lsof make man-db p7zip patch
         procps-ng rsync tar time tmux tree tzdata unzip util-linux which xz zip
         findutils file hostname psmisc gawk sed grep bzip2 gzip nano nss-tools
-        strace ltrace iproute iputils
+        strace ltrace iproute iputils nvtop
     )
 
     DEV_TOOLS=(
