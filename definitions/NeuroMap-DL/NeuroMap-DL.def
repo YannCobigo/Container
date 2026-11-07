@@ -1,0 +1,179 @@
+Bootstrap: docker
+From: ubuntu:24.04
+
+%labels
+    org.opencontainers.image.title "NeuroMap-DL"
+    org.opencontainers.image.version "0.1.0"
+    org.opencontainers.image.description "NeuroMap-DL multidimensional neuroimaging deep-learning environment with optional MONAI backend and profiling"
+
+%environment
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+    export PYTHONNOUSERSITE=1
+    export VIRTUAL_ENV=/opt/venv
+    export PATH=/opt/venv/bin:${PATH}
+
+    # A SIF is read-only. Keep caches and temporary framework state outside the
+    # installed Python environment. Bind /cache to persistent host storage when
+    # desired; /tmp remains a safe fallback for ordinary runs.
+    export NEUROMAP_DL_CACHE=${NEUROMAP_DL_CACHE:-/tmp/neuromap-dl-cache}
+    export XDG_CACHE_HOME=${NEUROMAP_DL_CACHE}
+    export TORCH_HOME=${NEUROMAP_DL_CACHE}/torch
+    export MPLCONFIGDIR=${NEUROMAP_DL_CACHE}/matplotlib
+
+%files
+    pyproject.toml /opt/neuromap-dl/pyproject.toml
+    README.md      /opt/neuromap-dl/README.md
+    src            /opt/neuromap-dl/src
+    tests          /opt/neuromap-dl/tests
+    configs        /opt/neuromap-dl/configs
+    examples       /opt/neuromap-dl/examples
+    doc            /opt/neuromap-dl/doc
+
+%post
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        emacs \
+        tree \
+        ca-certificates \
+        git \
+        libgomp1 \
+        libstdc++6 \
+        procps \
+        python3 \
+        python3-pip \
+        python3-venv
+    rm -rf /var/lib/apt/lists/*
+
+    python3 -m venv /opt/venv
+    /opt/venv/bin/python -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+    # Keep the PyTorch/CUDA combination already exercised successfully in the
+    # NeuroMap-DL development environment. The CUDA-enabled wheel also runs on
+    # CPU. NVIDIA GPU access is supplied at runtime by `apptainer exec --nv` and
+    # therefore depends on a compatible host NVIDIA driver, not a CUDA toolkit
+    # installed in this image.
+    /opt/venv/bin/python -m pip install --no-cache-dir \
+        torch==2.13.0 \
+        --index-url https://download.pytorch.org/whl/cu126
+
+    # Install NeuroMap-DL and its current research/development features.
+    # The `monai` extra is added by NeuroMap-DL_0.1.1_monai_profiler.patch and
+    # intentionally remains optional at the Python-package level. The container
+    # includes it so native and MONAI backends can be compared in one image.
+    /opt/venv/bin/python -m pip install --no-cache-dir \
+        "/opt/neuromap-dl[all,ants,monai,dev]"
+
+    # Record the exact resolved environment inside the immutable image. This is
+    # useful because the package version, schema version and container dependency
+    # versions are separate provenance concepts.
+    /opt/venv/bin/python -m pip freeze --all > /opt/neuromap-dl/container-installed-packages.txt
+
+    mkdir -p /data /output /work /cache
+
+%test
+    set -eu
+    cd /opt/neuromap-dl
+
+    # CPU-only build-time smoke test. GPU availability must be checked at runtime
+    # with --nv; an Apptainer build host is not required to expose a GPU.
+    /opt/venv/bin/python - <<'PY'
+import sys
+
+import nibabel
+import torch
+import monai
+import neuromap_dl
+
+from neuromap_dl.models import build_model
+
+print("python:", sys.version.replace("\n", " "))
+print("neuromap_dl:", neuromap_dl.__version__)
+print("torch:", torch.__version__, "cuda-build:", torch.version.cuda)
+print("nibabel:", nibabel.__version__)
+print("monai:", monai.__version__)
+
+# Prove that both registered 3D autoencoder backends construct and execute.
+x = torch.randn(1, 1, 16, 16, 16)
+for backend in ("native", "monai"):
+    model = build_model(
+        "stacked_conv_autoencoder",
+        spatial_dims=3,
+        in_channels=1,
+        backend=backend,
+        channels=[8, 16, 32],
+    )
+    with torch.no_grad():
+        y = model(x)
+    assert y.shape == x.shape, (backend, x.shape, y.shape)
+    print(f"3d_autoencoder_backend={backend} output_shape={tuple(y.shape)}")
+
+# torch.profiler is part of PyTorch; importing it here catches packaging/runtime
+# problems before a profiler experiment is attempted.
+from torch.profiler import ProfilerActivity, profile
+with profile(activities=[ProfilerActivity.CPU]) as prof:
+    _ = torch.ones(8).square().sum()
+assert prof.key_averages()
+print("torch_profiler: ok")
+PY
+
+    /opt/venv/bin/python -m pytest -q
+
+%runscript
+    exec /opt/venv/bin/neuromap-dl "$@"
+
+%help
+    NeuroMap-DL 0.1 development image with native PyTorch and optional MONAI backend
+
+    Prerequisite:
+      Apply NeuroMap-DL_0.1.1_monai_profiler.patch before building this image.
+
+    Build from the repository root:
+      apptainer build neuromap-dl_0.1-monai.sif container/NeuroMap-DL.def
+
+    Development source tree in a read-only SIF:
+      apptainer exec \
+        --bind "$PWD:/work/NeuroMap-DL" \
+        --env PYTHONPATH=/work/NeuroMap-DL/src \
+        neuromap-dl_0.1-monai.sif \
+        python -c 'import neuromap_dl; print(neuromap_dl.__file__)'
+
+    Runtime version check:
+      apptainer exec neuromap-dl_0.1-monai.sif python - <<'PY'
+      import torch, monai, nibabel, neuromap_dl
+      print("NeuroMap-DL:", neuromap_dl.__version__)
+      print("PyTorch:", torch.__version__)
+      print("CUDA wheel:", torch.version.cuda)
+      print("MONAI:", monai.__version__)
+      print("Nibabel:", nibabel.__version__)
+      PY
+
+    NVIDIA GPU check:
+      apptainer exec --nv neuromap-dl_0.1-monai.sif \
+        python -c 'import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU")'
+
+    Profile the native synthetic 3D autoencoder from a bind-mounted source tree:
+      apptainer exec --nv \
+        --bind "$PWD:/work/NeuroMap-DL" \
+        --env PYTHONPATH=/work/NeuroMap-DL/src \
+        neuromap-dl_0.1-monai.sif \
+        python /work/NeuroMap-DL/examples/t1w3d/profile_t1w3d.py \
+        /work/NeuroMap-DL/configs/t1w3d/profile_synthetic_autoencoder_native.json
+
+    Profile the matched MONAI backend by replacing the final configuration with:
+      /work/NeuroMap-DL/configs/t1w3d/profile_synthetic_autoencoder_monai.json
+
+    LDM_100k profiling:
+      Edit configs/t1w3d/profile_ldm100k_autoencoder.json so source.path points to
+      one representative raw T1w NIfTI, bind the dataset into the container, and
+      run profile_t1w3d.py with --nv. No resampling or registration is performed.
+
+    Writable locations:
+      A SIF is read-only. Bind writable host directories for datasets, run outputs,
+      caches and temporary work. The image provides /data, /output, /cache and /work
+      as conventional bind targets.
