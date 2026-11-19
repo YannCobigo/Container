@@ -5,6 +5,10 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_41_python-neuro.sandbox
     Author Yann Cobigo
     Description Rocky 8.10 neuroimaging application layer
 
+
+%files
+    /serv/Container/sources/IC/MATLAB /opt/ic/src/matlab-archives
+
 %post
     set -euxo pipefail
     export LANG=en_US.UTF-8
@@ -131,7 +135,7 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_41_python-neuro.sandbox
                 -DBUILD_SHARED_LIBS=ON \
                 -DCMAKE_POLICY_VERSION_MINIMUM="${cmver}"
             log_run "ants-${ver}-build" cmake --build "$bld" -j"$(nproc)"
-            log_run "ants-${ver}-install" cmake --install "$bld"
+            log_run "ants-${ver}-install" cmake --install "$bld/ANTS-build"
         fi
     }
 
@@ -180,9 +184,91 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_41_python-neuro.sandbox
     build_kcl_reg 1.3
     build_kcl_seg 1.0
 
+
+    ##############################
+    # MATLAB neuroimaging tools  #
+    ##############################
+    MATLAB_ROOT=/opt/ic/softwares/neuro/MATLAB
+    MATLAB_ARCHIVES=/opt/ic/src/matlab-archives
+    mkdir -p "$MATLAB_ROOT" /opt/ic/modulefiles/SPM
+    mkdir -p /opt/ic/modulefiles/matlab-neuro
+    test -f "$MATLAB_ARCHIVES/roots.tsv"
+
+    # roots.tsv: archive name<TAB>relative toolbox root inside that ZIP.
+    # Use '.' for an archive without a containing directory.
+    install_matlab_zip() (
+        set -eu
+        archive="$1"
+        target="$2"
+        relative_root="$(awk -F '\t' -v a="$archive" '$1==a {print $2}' \
+            "$MATLAB_ARCHIVES/roots.tsv")"
+        test -n "$relative_root"
+        case "$relative_root" in
+            /*|*..*) echo "Unsafe toolbox root: $relative_root" >&2; exit 1 ;;
+        esac
+        test -f "$MATLAB_ARCHIVES/$archive"
+        test ! -e "$MATLAB_ROOT/$target"
+        log_run "matlab-${target}-archive-test" unzip -tq "$MATLAB_ARCHIVES/$archive"
+        sha256sum "$MATLAB_ARCHIVES/$archive" \
+            >>/opt/ic/share/logs/neuro/matlab-archives.sha256
+        stage="$(mktemp -d "$MATLAB_ROOT/.extract.XXXXXX")"
+        trap 'rm -rf "$stage"' EXIT
+        log_run "matlab-${target}-extract" \
+            unzip -q "$MATLAB_ARCHIVES/$archive" -d "$stage"
+        test -d "$stage/$relative_root"
+        # Copy contents to normalize archives with or without a root folder.
+        mkdir -p "$MATLAB_ROOT/$target"
+        cp -a "$stage/$relative_root/." "$MATLAB_ROOT/$target/"
+    )
+
+    install_matlab_zip spm12.zip spm12
+    install_matlab_zip spm8.zip spm8
+    install_matlab_zip cat12.zip cat12
+    install_matlab_zip LST_3.0.0.zip LST
+    install_matlab_zip MEDI_toolbox.zip MEDI
+    install_matlab_zip FANSI-toolbox.zip FANSI
+    install_matlab_zip sepia.zip sepia
+    install_matlab_zip NODDI_toolbox_v1.01.zip NODDI
+
+    test -f "$MATLAB_ROOT/spm12/spm.m"
+    test -f "$MATLAB_ROOT/spm8/spm.m"
+    test -d "$MATLAB_ROOT/spm12/toolbox"
+    # Do not overwrite toolboxes already included in the SPM archive.
+    test ! -e "$MATLAB_ROOT/spm12/toolbox/cat12"
+    test ! -e "$MATLAB_ROOT/spm12/toolbox/LST"
+    ln -s ../../cat12 "$MATLAB_ROOT/spm12/toolbox/cat12"
+    ln -s ../../LST "$MATLAB_ROOT/spm12/toolbox/LST"
+
+
     ###############
     #   MODULES   #
     ###############
+
+
+    for version in 8 12; do
+        cat >"/opt/ic/modulefiles/SPM/$version" <<EOF_MATLAB
+#%Module1.0
+module-whatis "SPM$version MATLAB toolbox (MATLAB not included)"
+conflict SPM
+set root /opt/ic/softwares/neuro/MATLAB/spm$version
+setenv SPM_HOME \$root
+prepend-path MATLABPATH \$root
+EOF_MATLAB
+    done
+    ln -sfn 12 /opt/ic/modulefiles/SPM/current
+
+    cat >/opt/ic/modulefiles/matlab-neuro/current <<'EOF_MATLAB'
+#%Module1.0
+module-whatis "MATLAB neuro toolbox locations; load SPM separately"
+set root /opt/ic/softwares/neuro/MATLAB
+setenv IC_MATLAB_TOOLBOX_ROOT $root
+setenv CAT12_HOME $root/cat12
+setenv LST_HOME $root/LST
+setenv MEDI_HOME $root/MEDI
+setenv FANSI_HOME $root/FANSI
+setenv SEPIA_HOME $root/sepia
+setenv NODDI_HOME $root/NODDI
+EOF_MATLAB
 
     cat >/opt/ic/modulefiles/FSL/current <<'EOF2'
 #%Module1.0
