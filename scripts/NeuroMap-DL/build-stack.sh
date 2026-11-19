@@ -26,7 +26,7 @@ build_sif() {
 
 # Base -> CUDA -> Dev -> Python Core -> Python Neuro -> Neuro
 # TeX intentionally branches from dev and is independent of neuro.
-#build_sandbox NeuroMap-DL NeuroMap-DL.def
+build_sandbox NeuroMap-DL NeuroMap-DL.def
 
 # Example final production artifacts:
 build_sif NeuroMap-DL NeuroMap-DL
