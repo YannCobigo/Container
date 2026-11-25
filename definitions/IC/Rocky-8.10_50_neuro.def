@@ -347,14 +347,33 @@ set root /opt/ic/softwares/neuro/AFNI
 prepend-path PATH $root/bin
 EOF2
 
+
+    # Isolate ANTs from FSL/standalone ITK shared libraries at runtime.
+    # Keep the real installation intact; expose launchers through the module.
+    ants_root=/opt/ic/softwares/neuro/ANTs/2.6.0
+    mkdir -p "$ants_root/wrappers"
+    for executable in "$ants_root"/bin/*; do
+        [ -f "$executable" ] && [ -x "$executable" ] || continue
+        name="$(basename "$executable")"
+        cat > "$ants_root/wrappers/$name" <<'EOF_ANTS_WRAPPER'
+#!/bin/sh
+root=/opt/ic/softwares/neuro/ANTs/2.6.0
+name=${0##*/}
+unset LD_PRELOAD
+export LD_LIBRARY_PATH="$root/lib:$root/lib64:/.singularity.d/libs"
+exec "$root/bin/$name" "$@"
+EOF_ANTS_WRAPPER
+        chmod 755 "$ants_root/wrappers/$name"
+    done
+
     cat >/opt/ic/modulefiles/ANTs/current <<'EOF2'
 #%Module1.0
 module-whatis "ANTs 2.6.0"
 set root /opt/ic/softwares/neuro/ANTs/2.6.0
+setenv ANTS_ROOT $root
 prepend-path PATH $root/bin
 prepend-path PATH $root/Scripts
-prepend-path LD_LIBRARY_PATH $root/lib
-prepend-path LD_LIBRARY_PATH $root/lib64
+prepend-path PATH $root/wrappers
 EOF2
 
     cat >/opt/ic/modulefiles/KCL/NREG/current <<'EOF2'

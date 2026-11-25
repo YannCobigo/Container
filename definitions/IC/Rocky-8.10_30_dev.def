@@ -35,7 +35,6 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
 	boost-devel
     	gmp-devel
     	mpfr-devel
-    	eigen3-devel
     	qt5-qtbase-devel
     	qt5-qtx11extras-devel
     	qt5-qttools-devel
@@ -59,15 +58,14 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
     install_group visual "${VISUAL_TOOLS[@]}"
 
     # System-provided Artemis development dependencies.
-    rpm -q eigen3-devel | tee -a "$LOG_DIR/dependencies.log"
     rpm -q doxygen      | tee -a "$LOG_DIR/dependencies.log"
     rpm -q gtest-devel  | tee -a "$LOG_DIR/dependencies.log"
-    test -f /usr/include/eigen3/Eigen/Core
 
     mkdir -p /opt/ic/softwares/neuro/ITK
     mkdir -p /opt/ic/softwares/geom/CGAL
     mkdir -p /opt/ic/softwares/geom/libigl
-    mkdir -p /opt/ic/modulefiles/dev /opt/ic/modulefiles/nlohmann_json
+    mkdir -p /opt/ic/softwares/dev/eigen
+    mkdir -p /opt/ic/modulefiles/dev /opt/ic/modulefiles/nlohmann_json /opt/ic/modulefiles/eigen
     mkdir -p /opt/ic/modulefiles/ITK
     mkdir -p /opt/ic/modulefiles/CGAL /opt/ic/modulefiles/libigl
     mkdir -p /opt/ic/modulefiles/ParaView /opt/ic/modulefiles/Gimp
@@ -95,6 +93,24 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
                 -DCMAKE_INSTALL_PREFIX="$inst" \
                 -DJSON_BuildTests=OFF
             log_run "nlohmann-json-${ver}-install" cmake --install "$bld"
+        fi
+    }
+
+    build_eigen() {
+        ver="$1"
+        src="/opt/ic/softwares/dev/eigen/eigen-${ver}-src"
+        bld="/opt/ic/softwares/dev/eigen/eigen-${ver}-build"
+        inst="/opt/ic/softwares/dev/eigen/${ver}"
+
+        if [ ! -d "$inst" ]; then
+            log_run "eigen-${ver}-clone" git clone --depth 1 --branch "${ver}" \
+                https://gitlab.com/libeigen/eigen.git "$src"
+            log_run "eigen-${ver}-configure" cmake -S "$src" -B "$bld" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$inst" \
+                -DBUILD_TESTING=OFF
+            log_run "eigen-${ver}-build" cmake --build "$bld" -j"$(nproc)"
+            log_run "eigen-${ver}-install" cmake --install "$bld"
         fi
     }
 
@@ -159,6 +175,8 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
     }
 
     build_nlohmann_json 3.11.3
+    build_eigen 3.4.1
+    build_eigen 5.0.1
 
     build_itk 5.3.0
     build_itk 5.4.6
@@ -171,6 +189,10 @@ From: /serv/Container/sandboxes/IC/Rocky-8.10_20_tex.sandbox
 
     test -f /opt/ic/softwares/dev/nlohmann_json/3.11.3/include/nlohmann/json.hpp
     test -f /opt/ic/softwares/dev/nlohmann_json/3.11.3/share/cmake/nlohmann_json/nlohmann_jsonConfig.cmake
+    test -f /opt/ic/softwares/dev/eigen/3.4.1/include/eigen3/Eigen/Core
+    test -f /opt/ic/softwares/dev/eigen/3.4.1/share/eigen3/cmake/Eigen3Config.cmake
+    test -f /opt/ic/softwares/dev/eigen/5.0.1/include/eigen3/Eigen/Core
+    test -f /opt/ic/softwares/dev/eigen/5.0.1/share/eigen3/cmake/Eigen3Config.cmake
 
     cat >/opt/ic/modulefiles/dev/current <<'EOF2'
 #%Module1.0
@@ -189,6 +211,31 @@ module-whatis "nlohmann/json 3.11.3"
 set root /opt/ic/softwares/dev/nlohmann_json/3.11.3
 prepend-path CMAKE_PREFIX_PATH $root
 setenv nlohmann_json_ROOT $root
+EOF2
+
+    cat >/opt/ic/modulefiles/eigen/3.4.1 <<'EOF2'
+#%Module1.0
+module-whatis "Eigen 3.4.1"
+conflict eigen
+set root /opt/ic/softwares/dev/eigen/3.4.1
+prepend-path CMAKE_PREFIX_PATH $root
+setenv Eigen3_ROOT $root
+EOF2
+    cat >/opt/ic/modulefiles/eigen/5.0.1 <<'EOF2'
+#%Module1.0
+module-whatis "Eigen 5.0.1"
+conflict eigen
+set root /opt/ic/softwares/dev/eigen/5.0.1
+prepend-path CMAKE_PREFIX_PATH $root
+setenv Eigen3_ROOT $root
+EOF2
+    cat >/opt/ic/modulefiles/eigen/current <<'EOF2'
+#%Module1.0
+module-whatis "Eigen 5.0.1 (current)"
+conflict eigen
+set root /opt/ic/softwares/dev/eigen/5.0.1
+prepend-path CMAKE_PREFIX_PATH $root
+setenv Eigen3_ROOT $root
 EOF2
 
     cat >/opt/ic/modulefiles/ITK/current <<'EOF2'
